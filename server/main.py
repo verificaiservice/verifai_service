@@ -148,11 +148,11 @@ CORS(app, supports_credentials=True)
 
 @app.route("/", methods=["GET"])
 def home():
-    return send_file("../web/public/index.html")
+    return send_file("public/index.html")
 
 @app.route("/assets/<path:filename>", methods=["GET"])
 def send(filename):
-    return send_file("../web/public/assets/" + filename)
+    return send_file("public/assets/" + filename)
 
 # rows = queue.add_modify_query("""SET @pos := 0;
 # UPDATE links
@@ -206,7 +206,7 @@ def list():
 @app.route("/edit", methods=["GET","POST"])
 def edit():
     if request.method == "GET":
-        return send_file("../web/public/index.html")
+        return send_file("public/index.html")
     
     response = None
 
@@ -236,7 +236,7 @@ def edit():
 @app.route("/insert", methods=["GET", "POST"])
 def insert():
     if request.method == "GET":
-        return send_file("../web/public/index.html")
+        return send_file("public/index.html")
     
     try:
         data = request.get_json()
