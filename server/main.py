@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from flask_cors import CORS
 import asyncio
 import time
+from threading import Thread
 
 load_dotenv()
 
@@ -311,11 +312,32 @@ def define():
 @app.route("/ip")
 def ip():
     return request.cookies.get("ipv6"), 200
- 
+
+async def loop():
+    while True:
+        await asyncio.sleep(10)
+        try:
+            if os.getenv("DEBUG") == "false":
+                requests.get("https://verifai-service.onrender.com")
+        except Exception as e:
+            print(e)
+            pass
+
+def run_flask():
+        app.run("0.0.0.0", port=12345)
+
+async def main():
+    try:
+        flask_thread = Thread(target=run_flask)
+        flask_thread.daemon = True
+        flask_thread.start()
+        loop_task = asyncio.create_task(loop())
+        await loop_task
+    except asyncio.CancelledError:
+        os._exit(0)
+
 if __name__ == "__main__":
     try:
-        app.run("0.0.0.0", 12345)
+        asyncio.run(main())
     except KeyboardInterrupt:
         queue.close()
-
-# https://verifai-8z3i.onrender.com
