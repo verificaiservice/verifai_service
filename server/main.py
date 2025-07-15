@@ -285,7 +285,7 @@ def verify():
         for row in rows:
             data["link"] = row["link"]
 
-            response = requests.post("https://6v9s4f5f-5000.brs.devtunnels.ms/verify", json=data).json()
+            response = requests.post("https://6v9s4f5f-5000.brs.devtunnels.ms/verify" if os.getenv("DEBUG") == "true" else "https://verifai-w7pk.onrender.com/verify", json=data).json()
             print(response)
             verify_result = 1 if "fato" in response["response"][:10] else 0
             response[str(row["id"])] = { "result": verify_result, "response": response["response"] }
