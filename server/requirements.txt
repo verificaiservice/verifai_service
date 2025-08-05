@@ -1,5 +1,10 @@
-dotenv==0.9.9
-pymysql==1.1.1
 cryptography==45.0.3
+dotenv==0.9.9
 flask-cors==6.0.0
+httpx
+pymysql==1.1.1
+quart
+quart-cors
 requests==2.32.3
+httpx
+uvicorn

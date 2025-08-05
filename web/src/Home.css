@@ -78,3 +78,35 @@
     cursor: pointer;
     border-radius: 5px;
 }
+.post{
+    display: flex;
+    flex-direction: row;
+}
+.post-options{
+    display: flex;
+    flex-direction: row;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: auto;
+    margin-bottom: auto;
+    width:50px
+}
+
+#edit-menu{
+    position: fixed;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    top:30%;
+}
+
+#x-edit-menu{
+    position: absolute;
+    display: block;
+    width: 10px;
+    margin-left: calc(100% - 52px);
+    cursor: pointer;
+}
+#link{
+    width: 100%;
+}

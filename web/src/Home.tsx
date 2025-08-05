@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './Home.css'
 import Header from './Header';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,17 @@ interface line {
   ipv6: string | undefined
 }
 
+// function Comp({line, i}:{line:line, i:number}) {
+//     const [ remove, setRemove ]=useState(false)
+//     useLayoutEffect(()=>{
+//         return ()=>{
+//             setRemove(true);
+//         }
+//     }, [])
+
+//     return remove ? <></> : 
+// }
+
 function Home() {
     const navigate = useNavigate();
 
@@ -24,17 +35,22 @@ function Home() {
     const [ isValidExecuteValue, setIsValidExecuteValue ] = useState(true);
     const [ result, setResult ] = useState({ recall: 0, precision: 0, specificity: 0, accuracy: 0 });
     const [ response, _ ] = useState([false,""]);
-    const [ page, setPage ] = useState(0);
+    const [ page, setPage ] = useState(-1);
     const [ postsPerPage, setPostsPerPage ] = useState(10);
     const [ nPosts, setNPosts ] = useState(0);
     
     const n_pages = useRef(0);
 
     const refs = {
-        inputPostsPerPage: useRef<HTMLInputElement>(null)
+        inputPostsPerPage: useRef<HTMLInputElement>(null),
+        link: useRef<HTMLInputElement>(null),
+        type: useRef<HTMLSelectElement>(null),
+        expect: useRef<HTMLSelectElement>(null)
     }
 
     const [ isAdmin, setIsAdmin ] = useState(false);
+
+    const [ editLine, setEditLine ] = useState<line | null>(null);
 
     const transformData = (data: any) => {
         const types = [
@@ -123,17 +139,33 @@ function Home() {
     }
 
     useEffect(()=>{
-        auth.post(auth.server + "/list", { page, postsPerPage }).then(response=>{
-            if (response.data.isAdmin){
-                setIsAdmin(true);
-            }
-            const data = response.data.data;
-            n_pages.current = Math.floor(data[0].n_posts / postsPerPage);
-            setNPosts(data[0].n_posts);
-            setExecuteValue(`1-${data.length}`);
-            setLines(transformData(data));
-        });
+        if (page >= 0){
+            auth.post(auth.server + "/list", { page, postsPerPage }).then(response=>{
+                if (response.data.isAdmin){
+                    setIsAdmin(true);
+                }
+                const data = response.data.data;
+                n_pages.current = Math.floor(data[0].n_posts / postsPerPage);
+                setNPosts(data[0].n_posts);
+                setExecuteValue(`1-${data.length}`);
+                setLines(transformData(data));
+            });
+        }
     },[page,postsPerPage]);
+
+    const process = () => {
+        console.log(window.instgrm)
+        window.instgrm && window.instgrm.Embeds.process();
+    }
+    useEffect(()=>{
+            process()
+
+        // const timeout = setTimeout(() => {
+        //     process()
+        // }, 1000); // pequeno delay para garantir que os blockquotes estão no DOM
+
+        // return () => clearTimeout(timeout);
+    },[result])
 
     useEffect(()=>{
         const query = new URLSearchParams(location.search);
@@ -162,10 +194,50 @@ function Home() {
 
     },[lines]);
 
-    const editLine = (line: line) => {
-        const query = new URLSearchParams(location.search);
-        query.set("id", String(line.id));
-        navigate("/edit?" + query.toString());
+    // const editLine = (line: line) => {
+    //     const query = new URLSearchParams(location.search);
+    //     query.set("id", String(line.id));
+    //     navigate("/edit?" + query.toString());
+    // }
+
+    const verifyInsert = ()=>{
+        if (editLine){
+            setEditLine(null);
+
+            var link = editLine.link.split("?")[0];
+            link = link.endsWith("/") ? link.slice(0, -1) : link;
+            const type = refs.type.current!.value;
+            const expect = refs.expect.current!.value;
+
+            if (!(link.startsWith("https://www.instagram.com/p/") || link.startsWith("https://www.instagram.com/reel/") || link.startsWith("https://www.instagram.com/share/p/") || link.startsWith("https://wwww.instagram.com/share/reel/"))) return;
+            
+            const id = editLine.id;
+            auth.post(auth.server + "/edit", { 
+               id, type, expect 
+            }).then(response=>{
+                const query = new URLSearchParams(location.search);
+                query.delete("id");
+                response.data.result=="true" && navigate("/?"+query.toString());
+            })
+        } else {
+            var link = refs.link.current!.value.split("?")[0];
+            link = link.endsWith("/") ? link.slice(0, -1) : link;
+            const type = refs.type.current!.value;
+            const expect = refs.expect.current!.value;
+
+            if (!(link.startsWith("https://www.instagram.com/p/") || link.startsWith("https://www.instagram.com/reel/") || link.startsWith("https://www.instagram.com/share/p/") || link.startsWith("https://wwww.instagram.com/share/reel/"))) return;
+            
+            auth.post(auth.server + "/insert", { 
+                link, type, expect 
+            }).then(response=>{
+                if (response.data.result == "false" && response.data.message && response.data.message == "exists"){
+                    setTimeout(()=>{
+                        navigate("/"+location.search);
+                    },1500);
+                }
+                response.data.result=="true" && navigate("/"+location.search);
+            })
+        }
     }
 
     return <>
@@ -192,13 +264,24 @@ function Home() {
                         <div className="line-result">{line.result}</div>
                         <div className="line-options">
                             <div className='delete-option btn-option' onClick={()=>deleteLine(line.id)}>d</div>
-                            <div className="edit-option btn-option" onClick={()=>editLine(line)}>e</div>
+                            <div className="edit-option btn-option" onClick={()=>setEditLine(line)}>e</div>
                             <div className="complete-option btn-option" onClick={()=>switchResponse(line)}>c</div>
                         </div>
                         { isAdmin ? <div className='line-ipv6'>{line.ipv6}</div> : <></> }
                     </div>
                 })}</div>
             </div>
+            <div style={{overflow:"hidden", overflowY: "auto", height: "700px"}} id='posts'>{lines.sort((a,b)=>b.id - a.id).map((line, i: number)=>{
+                return <div className={'post post-'+String(i)} key={String(i * 1000 + line.id)}>
+                    <blockquote className="instagram-media" data-instgrm-permalink={line.link} data-instgrm-version="14"></blockquote>
+                    <div className='post-options'>
+                        {line.expect == 3 ? <i className="fa-duotone fa-solid fa-square-check" style={{"--fa-primary-color": "#ffffff", "--fa-secondary-color": "#00ff11", "--fa-secondary-opacity": 1} as React.CSSProperties}></i> : <i className="fa-solid fa-xmark" style={{color: "#ff0000"}}></i>}
+                        <div className='delete-option btn-option' onClick={()=>deleteLine(line.id)}>d</div>
+                        <div className="edit-option btn-option" onClick={()=>setEditLine(line)}>e</div>
+                        <div className="complete-option btn-option" onClick={()=>switchResponse(line)}>c</div>
+                    </div>
+                </div>
+            })}</div>
             <div className='switch-page-container'>
                 <div id="btn-switch-pages">
                     <div className='btn-switch-page' onClick={()=>navigate("/?page=" + Math.max(page - 1, 0))}>{Math.max(page,0)}</div>
@@ -226,6 +309,34 @@ function Home() {
             <div style={{ display: response[0] ? "block" : "none" }} id="response-menu">
                 <div id="response-x" onClick={closeResponse}></div>
                 <div id="response"></div>
+            </div>
+            <div id="edit-menu" style={{display: editLine ? "flex" : "none" }}>
+                <div id="form">
+                    <div id="x-edit-menu" onClick={()=>setEditLine(null)}>X</div>
+                    <div className='group'>
+                        <div className='label'>Link:</div>
+                        <input defaultValue={editLine ? editLine.link : ""} readOnly={!!editLine}  ref={refs.link} id="link" className='group-input'></input>
+                    </div>
+                    <div className='group'>
+                        <div className='label'>Tipo de conteúdo:</div>
+                        <select className='insert-select group-input' defaultValue={editLine ? editLine.type : 1} ref={refs.type} id="type">
+                            <option value="1">Saúde e Ciência</option>
+                            <option value="2">Geopolítica</option>
+                            <option value="3">História</option>
+                            <option value="4">Esporte e Cultura</option>
+                            <option value="5">Atualidades</option>
+                            <option value="0">Outro</option>
+                        </select>
+                    </div>
+                    <div className='group'>
+                        <div className='label'>Veracidade:</div>
+                        <select className='insert-select group-input' defaultValue={editLine ? editLine.expect : 1} ref={refs.expect} id="expect">
+                            <option value="1">Verdadeiro</option>
+                            <option value="0">Falso</option>
+                        </select>
+                    </div>
+                    <div id="send" className='btn' onClick={verifyInsert}>Inserir</div>
+                </div>
             </div>
         </div>
     </>
