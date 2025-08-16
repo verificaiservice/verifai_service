@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import './Home.css'
 import Header from './Header';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +38,7 @@ function Home() {
     const [ page, setPage ] = useState(-1);
     const [ postsPerPage, setPostsPerPage ] = useState(10);
     const [ nPosts, setNPosts ] = useState(0);
+    const [ nPostsVerified, setNPostsVerified ] = useState(0);
     
     const n_pages = useRef(0);
 
@@ -147,6 +148,7 @@ function Home() {
                 const data = response.data.data;
                 n_pages.current = Math.floor(data[0].n_posts / postsPerPage);
                 setNPosts(data[0].n_posts);
+                setNPostsVerified(data[0].n_posts_verified);
                 setExecuteValue(`1-${data.length}`);
                 setLines(transformData(data));
             });
@@ -271,7 +273,7 @@ function Home() {
                     </div>
                 })}</div>
             </div>
-            <div style={{overflow:"hidden", overflowY: "auto", height: "700px"}} id='posts'>{lines.sort((a,b)=>b.id - a.id).map((line, i: number)=>{
+            <div style={{overflow:"hidden", overflowY: "auto", height: "700px"}} id='posts'>{(lines.length > 20 ? [] : lines).map((line, i: number)=>{
                 return <div className={'post post-'+String(i)} key={String(i * 1000 + line.id)}>
                     <blockquote className="instagram-media" data-instgrm-permalink={line.link} data-instgrm-version="14"></blockquote>
                     <div className='post-options'>
@@ -288,6 +290,7 @@ function Home() {
                     <div className='btn-switch-page' onClick={()=>navigate("/?page=" + Math.min(page + 1, n_pages.current))}>{page + 2}</div>
                 </div>
                 <div>{nPosts} posts</div>
+                <div>{nPostsVerified} posts verificados</div>
                 <div>Posts por página</div>
                 <input defaultValue="10" ref={refs.inputPostsPerPage} type='number' id="input-posts-per-page"></input>
                 <button onClick={()=>setPostsPerPage(Number(refs.inputPostsPerPage.current!.value))} id="posts-per-page">Atualizar</button>

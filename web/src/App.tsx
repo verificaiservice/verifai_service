@@ -17,7 +17,7 @@ function App() {
     if (!response.data.setted){
         auth.get("https://verifaiservice.eneagonlosamigos.workers.dev/").then(response=>{
             const ipv6 = response.data;
-            auth.post(auth.server + "/define", { ipv6 }).then(result=>{
+            auth.post(auth.server + "/define", { ipv6 }).then(_=>{
                 window.location.reload();
             });
         })

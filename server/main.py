@@ -4,12 +4,12 @@ import pymysql
 import requests
 import os
 from dotenv import load_dotenv
-from quart_cors import cors
 import asyncio
 import time
 import traceback
 import httpx
 import uvicorn
+from socketio import AsyncClient as AsyncClientSocketIO
 
 load_dotenv()
 
@@ -54,8 +54,10 @@ class QuerysQueue:
                 current_queue = self.queue[id]
 
                 if current_queue[1] == "get":
+                    start = time.time()
                     self.cursor.execute(*current_queue[0])
                     self.queue[id][0] = self.cursor.fetchall()
+                    print(time.time() - start)
 
                 else:
                     self.cursor.execute(*current_queue[0])
@@ -145,21 +147,23 @@ queue = QuerysQueue()
 # )
 # """)
 app = Quart(__name__)
-app = cors(app, allow_origin="http://localhost:5100", allow_credentials=True)  # ou use um domínio específico
+
+io: AsyncClientSocketIO | None = None
+
 # app = Flask(__name__)
 # CORS(app, supports_credentials=True)
 
 @app.route("/", methods=["GET"])
-def home():
-    return send_file("public/index.html")
+async def home():
+    return await send_file("public/index.html")
 
 @app.route("/assets/<path:filename>", methods=["GET"])
-def assets(filename):
-    return send_file("public/assets/" + filename)
+async def assets(filename):
+    return await send_file("public/assets/" + filename)
 
 @app.route("/images/<path:filename>", methods=["GET"])
-def images(filename):
-    return send_file("public/images/" + filename)
+async def images(filename):
+    return await send_file("public/images/" + filename)
 
 # rows = await queue.add_modify_query("""SET @pos := 0;
 # UPDATE links
@@ -206,7 +210,7 @@ async def get_list():
     postsPerPage = data["postsPerPage"]
     init_post = page * postsPerPage
 
-    rows = await queue.add_get_query(f"SELECT *, (SELECT COUNT(*) FROM links) AS n_posts FROM links ORDER BY id LIMIT {init_post}, {postsPerPage}")
+    rows = await queue.add_get_query(f"SELECT *, (SELECT COUNT(*) FROM links) AS n_posts, (SELECT COUNT(*) FROM links WHERE expect!=3 AND result!=2) AS n_posts_verified FROM links ORDER BY id LIMIT {init_post}, {postsPerPage}")
     return json.dumps({ "result": "true", "isAdmin": request.cookies.get("ipv6").startswith("2804:25ac:43c:fd00"), "data": rows }), 200
 
 
@@ -224,7 +228,7 @@ async def edit():
         id = data["id"]
 
         if type == "get":
-            row = await queue.add_get_query("SELECT * FROM links WHERE id=%s", (id,))[0]
+            row = (await queue.add_get_query("SELECT * FROM links WHERE id=%s", (id,)))[0]
             response = json.dumps({ "result": "true", "data": row }), 200
 
         else:
@@ -274,7 +278,8 @@ async def delete():
         print(e)
     finally:
         conn.close()
-        return get_list()
+        # return get_list()
+        return await get_list()
 
 @app.route("/verify", methods=["POST"])
 async def verify():
@@ -284,22 +289,28 @@ async def verify():
         id_end = data["id_end"]
         rows = await queue.add_get_query("SELECT *, (SELECT link FROM parcial_links WHERE id = l.id) AS image_link, (SELECT caption FROM parcial_links WHERE id = l.id) AS caption FROM links l WHERE id >= %s AND id <= %s", (id_start, id_end))
 
-        data = {
-            "VERIFY_TOKEN": os.getenv("VERIFY_TOKEN"),
-        }
 
+
+        responses = {}
+
+        io = AsyncClientSocketIO()
+        await io.connect("http://localhost:5000" if os.getenv("DEBUG") == "true" else "https://verifai-w7pk.onrender.com")
 
         for row in rows:
-            if "image_link" in row:
+            data = {
+                "VERIFY_TOKEN": os.getenv("VERIFY_TOKEN"),
+            }
+            # if "image_link" in row:
+            if "impossible_key" in row:
                 image_link = row["image_link"]
                 title = row["caption"]
 
                 is_video = ".mp4" in image_link
-                shortcode = image_link.split("vl_")[1].split("?")[0]
+                shortcode = image_link.split("vl_")[1].split("?")[0].split(".")[0]
                 data["message"] = {
                     'attachments': [
                         {
-                            'type': 'ig_reel' if is_video else 'share', 
+                            'type': 'ig_reel' if is_video else 'share',
                             'payload': {
                                 'reel_video_id': shortcode,
                                 'title': title,
@@ -312,13 +323,26 @@ async def verify():
             else:
                 data["link"] = row["link"]
 
-            response = requests.post("https://6v9s4f5f-5000.brs.devtunnels.ms/verify" if os.getenv("DEBUG") == "true" else "https://verifai-w7pk.onrender.com/verify", json=data).json()
+            event = asyncio.Event()
+           
+            async def get_response(response):
+                print(response, len(response))
 
-            verify_result = 1 if "fato" in response["response"][:12] else 0
-            response[str(row["id"])] = { "result": verify_result, "response": response["response"] }
+                if len(response)  > 300:
+                    verify_result = 1 if "fato" in response[:12] else 0
+                    responses[str(row["id"])] = { "result": verify_result, "response": response }
 
-            await queue.add_modify_query("UPDATE links SET result = %s, response = %s WHERE id = %s", (verify_result, response["response"], int(row["id"])))
-        
+                    await queue.add_modify_query("UPDATE links SET result = %s, response = %s WHERE id = %s", (verify_result, response, int(row["id"])))
+                    event.set()
+
+            await io.emit("verify",json.dumps(data))
+
+            # Register the listener
+            io.on("updated_message", get_response)
+
+            # Wait get_response execution
+            await event.wait()
+
         return get_list()
     
     except Exception as e:
@@ -332,12 +356,26 @@ def has_defined():
 @app.route("/define", methods=["POST"])
 async def define():
     response = await make_response(json.dumps({ "result": "true" }))
-    response.set_cookie('ipv6', await request.get_json()["ipv6"], httponly=True, samesite=None, max_age=3600)
+    response.set_cookie('ipv6', (await request.get_json())["ipv6"], httponly=True, samesite=None, max_age=3600)
     return response
 
 @app.route("/ip")
 def ip():
     return request.cookies.get("ipv6"), 200
+
+@app.after_request
+async def dynamic_cors(response):
+    origin = request.headers.get("Origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Length, Content-Type"
+    return response
+
+# async def create_io_client():
+    # global io
+
+    #     await io.wait()
 
 async def keep_alive_loop():
     while True:
@@ -352,6 +390,7 @@ async def keep_alive_loop():
 async def main():
     # Cria a tarefa do loop de keep-alive
     loop_task = asyncio.create_task(keep_alive_loop())
+    # asyncio.create_task(create_io_client())
 
     # Configura e inicia o servidor Uvicorn
     config = uvicorn.Config(app=app, host="0.0.0.0", port=12345)
