@@ -39,6 +39,8 @@ function Home() {
     const [ postsPerPage, setPostsPerPage ] = useState(10);
     const [ nPosts, setNPosts ] = useState(0);
     const [ nPostsVerified, setNPostsVerified ] = useState(0);
+    const [ nPostsTrue, setNPostsTrue ] = useState(0);
+    const [ nPostsFalse, setNPostsFalse ] = useState(0);
     
     const n_pages = useRef(0);
 
@@ -149,6 +151,8 @@ function Home() {
                 n_pages.current = Math.floor(data[0].n_posts / postsPerPage);
                 setNPosts(data[0].n_posts);
                 setNPostsVerified(data[0].n_posts_verified);
+                setNPostsTrue(data[0].n_posts_true);
+                setNPostsFalse(data[0].n_posts_false);
                 setExecuteValue(`1-${data.length}`);
                 setLines(transformData(data));
             });
@@ -291,6 +295,8 @@ function Home() {
                 </div>
                 <div>{nPosts} posts</div>
                 <div>{nPostsVerified} posts verificados</div>
+                <div>{nPostsTrue} posts verdadeiros</div>
+                <div>{nPostsFalse} posts não verdadeiros</div>
                 <div>Posts por página</div>
                 <input defaultValue="10" ref={refs.inputPostsPerPage} type='number' id="input-posts-per-page"></input>
                 <button onClick={()=>setPostsPerPage(Number(refs.inputPostsPerPage.current!.value))} id="posts-per-page">Atualizar</button>

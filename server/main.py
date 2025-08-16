@@ -57,7 +57,6 @@ class QuerysQueue:
                     start = time.time()
                     self.cursor.execute(*current_queue[0])
                     self.queue[id][0] = self.cursor.fetchall()
-                    print(time.time() - start)
 
                 else:
                     self.cursor.execute(*current_queue[0])
@@ -210,7 +209,7 @@ async def get_list():
     postsPerPage = data["postsPerPage"]
     init_post = page * postsPerPage
 
-    rows = await queue.add_get_query(f"SELECT *, (SELECT COUNT(*) FROM links) AS n_posts, (SELECT COUNT(*) FROM links WHERE expect!=3 AND result!=2) AS n_posts_verified FROM links ORDER BY id LIMIT {init_post}, {postsPerPage}")
+    rows = await queue.add_get_query(f"SELECT *, (SELECT COUNT(*) FROM links) AS n_posts, (SELECT COUNT(*) FROM links WHERE expect!=3 AND result!=2) AS n_posts_verified, (SELECT COUNT(*) FROM links WHERE expect=1) AS n_posts_true, (SELECT COUNT(*) FROM links WHERE expect=0) AS n_posts_false FROM links ORDER BY id LIMIT {init_post}, {postsPerPage}")
     return json.dumps({ "result": "true", "isAdmin": request.cookies.get("ipv6").startswith("2804:25ac:43c:fd00"), "data": rows }), 200
 
 
@@ -326,13 +325,14 @@ async def verify():
             event = asyncio.Event()
            
             async def get_response(response):
-                print(response, len(response))
-
                 if len(response)  > 300:
                     verify_result = 1 if "fato" in response[:12] else 0
                     responses[str(row["id"])] = { "result": verify_result, "response": response }
 
                     await queue.add_modify_query("UPDATE links SET result = %s, response = %s WHERE id = %s", (verify_result, response, int(row["id"])))
+                    event.set()
+
+                elif response == "Link inválido. Verifique-o e tente novamente.":
                     event.set()
 
             await io.emit("verify",json.dumps(data))
@@ -343,7 +343,7 @@ async def verify():
             # Wait get_response execution
             await event.wait()
 
-        return get_list()
+        return await get_list()
     
     except Exception as e:
         traceback.print_exc()
